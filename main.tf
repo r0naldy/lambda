@@ -2,18 +2,19 @@ provider "aws" {
   region = var.aws_region
 }
 
-variable "aws_region" { default = "us-east-1" }
+variable "aws_region" { default = "sa-east-1" }
 variable "bucket_name" { default = "x-backet-cloud2" }
 
-# 1️⃣ Creamos el bucket directamente en Terraform
+# 1️⃣ Crear el bucket S3
 resource "aws_s3_bucket" "data_bucket" {
   bucket = var.bucket_name
 }
 
-# 2️⃣ Política de asunción para Lambda
+# 2️⃣ Política de Asunción para Lambda
 data "aws_iam_policy_document" "lambda_assume" {
   statement {
     actions = ["sts:AssumeRole"]
+
     principals {
       type        = "Service"
       identifiers = ["lambda.amazonaws.com"]
@@ -21,12 +22,12 @@ data "aws_iam_policy_document" "lambda_assume" {
   }
 }
 
-resource "aws_iam_role1" "lambda_role" {
+resource "aws_iam_role" "lambda_role" {
   name               = "lambda-s3-role"
   assume_role_policy = data.aws_iam_policy_document.lambda_assume.json
 }
 
-# 3️⃣ Permisos específicos sobre el bucket
+# 3️⃣ Permisos minimalistas para el bucket
 data "aws_iam_policy_document" "lambda_s3_access" {
   statement {
     effect = "Allow"
@@ -44,7 +45,7 @@ resource "aws_iam_role_policy" "lambda_s3_policy" {
   policy = data.aws_iam_policy_document.lambda_s3_access.json
 }
 
-# 4️⃣ Layer con pandas y numpy
+# 4️⃣ Capa con pandas y numpy (compatible)
 resource "aws_lambda_layer_version" "pandas_layer" {
   filename            = "${path.module}/lambda_layer/python_layer.zip"
   layer_name          = "pandas_numpy_layer"
@@ -63,7 +64,7 @@ resource "aws_lambda_function" "data_cleaner" {
   layers           = [aws_lambda_layer_version.pandas_layer.arn]
 }
 
-# 6️⃣ Otorgar permiso al bucket para invocar la función
+# 6️⃣ Permiso para que S3 invoque la función
 resource "aws_lambda_permission" "allow_bucket" {
   statement_id  = "AllowS3Invoke"
   action        = "lambda:InvokeFunction"
@@ -72,7 +73,7 @@ resource "aws_lambda_permission" "allow_bucket" {
   source_arn    = aws_s3_bucket.data_bucket.arn
 }
 
-# 7️⃣ Configurar evento S3 → Lambda para archivos CSV en "raw/"
+# 7️⃣ Evento de S3 que dispara la Lambda al subir CSV a "raw/"
 resource "aws_s3_bucket_notification" "bucket_notification" {
   bucket = aws_s3_bucket.data_bucket.id
 
