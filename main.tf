@@ -5,54 +5,57 @@ provider "aws" {
 variable "aws_region" { default = "sa-east-1" }
 variable "bucket_name" { default = "x-backet-cloud2" }
 
-# 1️⃣ Crear el bucket S3
+# 0️⃣ Importa el rol existente sin errores
+import {
+  to = aws_iam_role.lambda_role
+  id = "lambda-s3-role"
+}
+
+# 1️⃣ Crea bucket si no existe
 resource "aws_s3_bucket" "data_bucket" {
   bucket = var.bucket_name
 }
 
-# 2️⃣ Política de Asunción para Lambda
+# 2️⃣ Asunción del rol Lambda
 data "aws_iam_policy_document" "lambda_assume" {
   statement {
     actions = ["sts:AssumeRole"]
-
     principals {
       type        = "Service"
       identifiers = ["lambda.amazonaws.com"]
     }
   }
 }
-
 resource "aws_iam_role" "lambda_role" {
   name               = "lambda-s3-role"
   assume_role_policy = data.aws_iam_policy_document.lambda_assume.json
 }
 
-# 3️⃣ Permisos minimalistas para el bucket
+# 3️⃣ Policy de permisos para S3
 data "aws_iam_policy_document" "lambda_s3_access" {
   statement {
-    effect = "Allow"
-    actions = ["s3:GetObject", "s3:PutObject"]
+    effect    = "Allow"
+    actions   = ["s3:GetObject", "s3:PutObject"]
     resources = [
       "${aws_s3_bucket.data_bucket.arn}/raw/*",
       "${aws_s3_bucket.data_bucket.arn}/process/*"
     ]
   }
 }
-
 resource "aws_iam_role_policy" "lambda_s3_policy" {
   name   = "lambda-s3-access"
   role   = aws_iam_role.lambda_role.id
   policy = data.aws_iam_policy_document.lambda_s3_access.json
 }
 
-# 4️⃣ Capa con pandas y numpy (compatible)
+# 4️⃣ Capa con pandas y numpy
 resource "aws_lambda_layer_version" "pandas_layer" {
   filename            = "${path.module}/lambda_layer/python_layer.zip"
   layer_name          = "pandas_numpy_layer"
   compatible_runtimes = ["python3.9"]
 }
 
-# 5️⃣ Función Lambda principal
+# 5️⃣ Función Lambda
 resource "aws_lambda_function" "data_cleaner" {
   filename         = "lambda_function_payload.zip"
   function_name    = "clean_sales_data"
@@ -64,7 +67,7 @@ resource "aws_lambda_function" "data_cleaner" {
   layers           = [aws_lambda_layer_version.pandas_layer.arn]
 }
 
-# 6️⃣ Permiso para que S3 invoque la función
+# 6️⃣ Permiso S3 -> Lambda
 resource "aws_lambda_permission" "allow_bucket" {
   statement_id  = "AllowS3Invoke"
   action        = "lambda:InvokeFunction"
@@ -73,7 +76,7 @@ resource "aws_lambda_permission" "allow_bucket" {
   source_arn    = aws_s3_bucket.data_bucket.arn
 }
 
-# 7️⃣ Evento de S3 que dispara la Lambda al subir CSV a "raw/"
+# 7️⃣ Notificación de S3
 resource "aws_s3_bucket_notification" "bucket_notification" {
   bucket = aws_s3_bucket.data_bucket.id
 
