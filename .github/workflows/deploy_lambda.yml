@@ -1,4 +1,4 @@
-name: Terraform Lambda CI/CD
+name: Terraform Lambda CI/CD .
 
 on:
   push:
