@@ -21,7 +21,7 @@ data "aws_iam_policy_document" "lambda_assume" {
   }
 }
 
-resource "aws_iam_role" "lambda_role" {
+resource "aws_iam_role1" "lambda_role" {
   name               = "lambda-s3-role"
   assume_role_policy = data.aws_iam_policy_document.lambda_assume.json
 }
