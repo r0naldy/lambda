@@ -1,0 +1,4 @@
+sudo apt update
+sudo apt install python3-pip zip
+pandas==1.5.3
+numpy==1.23.5
