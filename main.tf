@@ -5,14 +5,15 @@ provider "aws" {
 variable "aws_region" { default = "us-east-1" }
 variable "bucket_name" { default = "x-backet-cloud2" }
 
-data "aws_s3_bucket" "data_bucket" {
+# 1️⃣ Creamos el bucket directamente en Terraform
+resource "aws_s3_bucket" "data_bucket" {
   bucket = var.bucket_name
 }
 
+# 2️⃣ Política de asunción para Lambda
 data "aws_iam_policy_document" "lambda_assume" {
   statement {
     actions = ["sts:AssumeRole"]
-
     principals {
       type        = "Service"
       identifiers = ["lambda.amazonaws.com"]
@@ -25,14 +26,14 @@ resource "aws_iam_role" "lambda_role" {
   assume_role_policy = data.aws_iam_policy_document.lambda_assume.json
 }
 
-
+# 3️⃣ Permisos específicos sobre el bucket
 data "aws_iam_policy_document" "lambda_s3_access" {
   statement {
     effect = "Allow"
     actions = ["s3:GetObject", "s3:PutObject"]
     resources = [
-      "${data.aws_s3_bucket.data_bucket.arn}/raw/*",
-      "${data.aws_s3_bucket.data_bucket.arn}/process/*"
+      "${aws_s3_bucket.data_bucket.arn}/raw/*",
+      "${aws_s3_bucket.data_bucket.arn}/process/*"
     ]
   }
 }
@@ -43,12 +44,14 @@ resource "aws_iam_role_policy" "lambda_s3_policy" {
   policy = data.aws_iam_policy_document.lambda_s3_access.json
 }
 
+# 4️⃣ Layer con pandas y numpy
 resource "aws_lambda_layer_version" "pandas_layer" {
   filename            = "${path.module}/lambda_layer/python_layer.zip"
   layer_name          = "pandas_numpy_layer"
   compatible_runtimes = ["python3.9"]
 }
 
+# 5️⃣ Función Lambda principal
 resource "aws_lambda_function" "data_cleaner" {
   filename         = "lambda_function_payload.zip"
   function_name    = "clean_sales_data"
@@ -60,16 +63,18 @@ resource "aws_lambda_function" "data_cleaner" {
   layers           = [aws_lambda_layer_version.pandas_layer.arn]
 }
 
+# 6️⃣ Otorgar permiso al bucket para invocar la función
 resource "aws_lambda_permission" "allow_bucket" {
   statement_id  = "AllowS3Invoke"
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.data_cleaner.function_name
   principal     = "s3.amazonaws.com"
-  source_arn    = data.aws_s3_bucket.data_bucket.arn
+  source_arn    = aws_s3_bucket.data_bucket.arn
 }
 
+# 7️⃣ Configurar evento S3 → Lambda para archivos CSV en "raw/"
 resource "aws_s3_bucket_notification" "bucket_notification" {
-  bucket = data.aws_s3_bucket.data_bucket.id
+  bucket = aws_s3_bucket.data_bucket.id
 
   lambda_function {
     lambda_function_arn = aws_lambda_function.data_cleaner.arn
@@ -80,5 +85,3 @@ resource "aws_s3_bucket_notification" "bucket_notification" {
 
   depends_on = [aws_lambda_permission.allow_bucket]
 }
-
-#aa
